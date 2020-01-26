@@ -1,93 +1,111 @@
-import React, { Component } from 'react';
-import { Mutation } from 'react-apollo';
+import React from 'react';
+import Downshift, { resetIdCounter } from 'downshift';
+import Router from 'next/router';
+import { ApolloConsumer } from 'react-apollo';
 import gql from 'graphql-tag';
-import propTypes from 'prop-types';
-import Form from './styles/Form';
-import Error from './ErrorMessage';
+import debounce from 'lodash.debounce';
+import { DropDown, DropDownItem, SearchStyles } from './styles/DropDown';
 
-const RESET_MUTATION = gql`
-  mutation RESET_MUTATION(
-    $resetToken: String!
-    $password: String!
-    $confirmPassword: String!
-  ) {
-    resetPassword(
-      resetToken: $resetToken
-      password: $password
-      confirmPassword: $confirmPassword
+const SEARCH_ITEMS_QUERY = gql`
+  query SEARCH_ITEMS_QUERY($searchTerm: String!) {
+    items(
+      where: {
+        OR: [
+          { title_contains: $searchTerm }
+          { description_contains: $searchTerm }
+        ]
+      }
     ) {
       id
-      email
-      name
+      image
+      title
     }
   }
 `;
 
-class Reset extends Component {
-  static propTypes = {
-    resetToken: propTypes.string.isRequired,
-  };
+function routeToItem(item) {
+  Router.push({
+    pathname: '/item',
+    query: {
+      id: item.id,
+    },
+  });
+}
+
+class AutoComplete extends React.Component {
   state = {
-    email: '',
-    password: '',
-    confirmPassword: '',
+    items: [],
+    loading: false,
   };
-  saveToState = e => {
-    this.setState({ [e.target.name]: e.target.value });
-  };
-
+  onChange = debounce(async (e, client) => {
+    console.log('Searching...');
+    // turn loading on
+    this.setState({ loading: true });
+    // Manually query apollo client
+    const res = await client.query({
+      query: SEARCH_ITEMS_QUERY,
+      variables: { searchTerm: e.target.value },
+    });
+    this.setState({
+      items: res.data.items,
+      loading: false,
+    });
+  }, 350);
   render() {
+    resetIdCounter();
     return (
-      <Mutation
-        mutation={RESET_MUTATION}
-        variables={{
-          resetToken: this.props.resetToken,
-          password: this.state.password,
-          confirmPassword: this.state.confirmPassword,
-        }}
-      >
-        {(reset, { error, loading }) => {
-          return (
-            <Form
-              method="post"
-              onSubmit={async e => {
-                e.preventDefault();
-                await reset();
-                this.setState({ password: '', confirmPassword: '' });
-              }}
-            >
-              <fieldset disabled={loading} aria-busy={loading}>
-                <h2>Reset Your Password!</h2>
-                <Error error={error} />
-
-                <label htmlFor="password">
-                  Password
+      <SearchStyles>
+        <Downshift
+          onChange={routeToItem}
+          itemToString={item => (item === null ? '' : item.title)}
+        >
+          {({
+            getInputProps,
+            getItemProps,
+            isOpen,
+            inputValue,
+            highlightedIndex,
+          }) => (
+            <div>
+              <ApolloConsumer>
+                {client => (
                   <input
-                    type="password"
-                    name="password"
-                    placeholder="password"
-                    value={this.state.password}
-                    onChange={this.saveToState}
+                    {...getInputProps({
+                      type: 'search',
+                      placeholder: 'Search For An Item',
+                      id: 'search',
+                      className: this.state.loading ? 'loading' : '',
+                      onChange: e => {
+                        e.persist();
+                        this.onChange(e, client);
+                      },
+                    })}
                   />
-                </label>
-
-                <label htmlFor="confirmPassword">
-                  Confirm Password
-                  <input
-                    type="Password"
-                    name="confirmPassword"
-                    placeholder="confirmPassword"
-                    value={this.state.confirmPassword}
-                    onChange={this.saveToState}
-                  />
-                </label>
-                <button type="submit"> Resest Your Password! </button>
-              </fieldset>
-            </Form>
-          );
-        }}
-      </Mutation>
+                )}
+              </ApolloConsumer>
+              {isOpen && (
+                <DropDown>
+                  {this.state.items.map((item, index) => (
+                    <DropDownItem
+                      {...getItemProps({ item })}
+                      key={item.id}
+                      highlighted={index === highlightedIndex}
+                    >
+                      <img width="50" src={item.image} alt={item.title} />
+                      {item.title}
+                    </DropDownItem>
+                  ))}
+                  {!this.state.items.length && !this.state.loading && (
+                    <DropDownItem> Nothing Found {inputValue}</DropDownItem>
+                  )}
+                </DropDown>
+              )}
+            </div>
+          )}
+        </Downshift>
+      </SearchStyles>
     );
   }
 }
-export default Reset;
+
+export default AutoComplete;

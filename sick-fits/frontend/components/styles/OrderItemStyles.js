@@ -18,9 +18,9 @@ const OrderItemStyles = styled.li`
     grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
     margin-top: 1rem;
     img {
-      height: 200px;
+      height: 50px;
       object-fit: cover;
-      width: 100%;
+      width: 25%;
     }
   }
   .order-meta {
